@@ -265,3 +265,61 @@ pub enum KeyCapType {
     /// Label has text in the center, e.g. Home
     Other,
 }
+
+#[cfg(test)]
+mod jis_tests {
+    use super::*;
+
+    fn jis_layout() -> Layout {
+        serde_yaml::from_str(include_str!("../../res/keyboard-jis.yaml")).unwrap()
+    }
+
+    #[test]
+    fn jis_layout_parses_and_all_buttons_resolve() {
+        let mut layout = jis_layout();
+        layout.post_load();
+        assert_eq!(layout.key_sizes.len(), 6);
+        assert_eq!(layout.key_sizes.len(), layout.main_layout.len());
+        let keymap = XkbKeymap::from_layout_variant("jp", "").unwrap();
+        for (row, keys) in layout.main_layout.iter().enumerate() {
+            for (col, key) in keys.iter().enumerate() {
+                if key.is_some() {
+                    assert!(
+                        layout
+                            .get_key_data(Some(&keymap), false, col, row, &[])
+                            .is_some(),
+                        "{key:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn jis_ime_labels_and_shift_symbols_are_visible() {
+        let layout = jis_layout();
+        let keymap = XkbKeymap::from_layout_variant("jp", "").unwrap();
+        for (row, col, expected) in [
+            (1, 0, vec!["半/全"]),
+            (3, 0, vec!["英数"]),
+            (5, 3, vec!["無変換"]),
+            (5, 5, vec!["変換"]),
+            (5, 6, vec!["かな"]),
+            (1, 13, vec!["\\", "|"]),
+            (4, 11, vec!["\\", "_"]),
+        ] {
+            let key = layout
+                .get_key_data(Some(&keymap), false, col, row, &[])
+                .unwrap();
+            assert_eq!(key.label, expected);
+        }
+        assert_eq!(
+            key_events_for_macro(&layout.macros["ZenkakuHankaku"]),
+            vec![(VirtualKey::Oem3, true), (VirtualKey::Oem3, false)]
+        );
+        assert_eq!(
+            key_events_for_macro(&layout.macros["Eisu"]),
+            vec![(VirtualKey::Caps, true), (VirtualKey::Caps, false)]
+        );
+    }
+}

@@ -194,6 +194,7 @@ pub enum VirtualKey {
     AbntC2 = 129,
     Hangul,
     Hanja,
+    Yen = 132, // Japanese AE13: Linux KEY_YEN (124) + XKB offset (8)
     LSuper = 133,
     RSuper,
     Menu,
@@ -286,6 +287,8 @@ pub const fn get_key_type(key: VirtualKey) -> KeyType {
         || key_between!(key, VirtualKey::A, VirtualKey::Oem3)
         || key_between!(key, VirtualKey::Oem5, VirtualKey::Oem2)
         || key_is!(key, VirtualKey::Oem102)
+        || key_is!(key, VirtualKey::AbntC1) // Japanese RO (backslash / underscore)
+        || key_is!(key, VirtualKey::Yen)
     {
         KeyType::Symbol
     } else if key_between!(key, VirtualKey::KP_7, VirtualKey::KP_0)
@@ -396,4 +399,47 @@ pub use x11::get_keymap_x11;
 #[cfg(not(feature = "x11"))]
 pub fn get_keymap_x11() -> anyhow::Result<XkbKeymap> {
     anyhow::bail!("X11 support not enabled.")
+}
+
+#[cfg(test)]
+mod jis_tests {
+    use super::*;
+    use std::str::FromStr;
+
+    #[test]
+    fn jis_symbols_match_the_japanese_xkb_keymap() {
+        let keymap = XkbKeymap::from_layout_variant("jp", "").unwrap();
+        for (key, plain, shifted) in [
+            (VirtualKey::N2, "2", "\""),
+            (VirtualKey::N6, "6", "&"),
+            (VirtualKey::N7, "7", "'"),
+            (VirtualKey::Minus, "-", "="),
+            (VirtualKey::Plus, "^", "~"),
+            (VirtualKey::Oem4, "@", "`"),
+            (VirtualKey::Oem6, "[", "{"),
+            (VirtualKey::Oem1, ";", "+"),
+            (VirtualKey::Oem7, ":", "*"),
+            (VirtualKey::Oem5, "]", "}"),
+            (VirtualKey::AbntC1, "\\", "_"),
+            (VirtualKey::Yen, "\\", "|"),
+        ] {
+            assert!(matches!(get_key_type(key), KeyType::Symbol));
+            assert_eq!(keymap.label_for_key(key, 0), plain, "{key:?}");
+            assert_eq!(keymap.label_for_key(key, SHIFT), shifted, "{key:?}");
+        }
+    }
+
+    #[test]
+    fn jis_keys_keep_the_linux_evdev_codes() {
+        for (name, evdev_code) in [
+            ("Yen", 124),
+            ("AbntC1", 89),
+            ("Oem3", 41),
+            ("Muhenkan", 94),
+            ("Henkan", 92),
+            ("Kana", 93),
+        ] {
+            assert_eq!(VirtualKey::from_str(name).unwrap() as u16 - 8, evdev_code);
+        }
+    }
 }
